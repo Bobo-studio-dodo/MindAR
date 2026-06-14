@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動系統</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image.prod.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        
-        /* 相機畫面滿版設定 */
         #container { width: 100vw; height: 100vh; position: relative; }
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
 
@@ -64,13 +60,20 @@
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-
     <div id="container"></div>
 
     <div id="popup-modal">
         <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
+
+    <script type="module">
+        import { MindARImageController } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
+        
+        // 🌟 這行是關鍵！把密室裡的大腦綁到全域視窗，打破隔離
+        window.GlobalMindARController = MindARImageController;
+        console.log("MindAR 核心已成功綁定至全域空間！");
+    </script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -81,45 +84,39 @@
 
             let mindarImage = null;
 
-            // 監聽按鈕點擊事件
             startBtn.addEventListener("click", async () => {
                 startBtn.style.display = 'none';
 
                 try {
-                    // 2. 在 1.1.4 版本中，建構式名稱叫 MindARImageController
-                    mindarImage = new MindARImageController({
-                        container: container,
+                    // 🌟 呼叫我們剛剛在 window 上鋪好的全域控制器，這下絕對找得到了！
+                    mindarImage = new window.GlobalMindARController({
+                        container: container
                     });
 
-                    // 3. 載入卡片辨識檔
+                    // 載入辨識檔
                     await mindarImage.addImageTargets('./card-targets.mind');
                     
-                    // 4. 開啟鏡頭並啟動辨識引擎
+                    // 啟動相機
                     await mindarImage.start();
-                    console.log("系統成功啟動，正在即時辨識卡片...");
+                    console.log("相機與影像辨識成功同步開啟！");
 
-                    // 5. 每幀即時監聽鏡頭畫面
+                    // 監聽辨識事件
                     mindarImage.onUpdate = (data) => {
                         if (data.type === 'update') {
                             const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                            
-                            // 當偵測到第一張卡片（targetIndex === 0）
                             if (targetIndex === 0 && !isScanning && trackingMatrix) {
-                                console.log("🎉 成功找出圖片！");
                                 popupModal.style.display = "flex";
                             }
                         }
                     };
 
-               } catch (err) {
-    console.error("相機啟動失敗:", err);
-    // 🟢 讓彈窗直接秀出系統底層的錯誤名稱
-    alert("啟動失敗原因: " + err.name + " -> " + err.message);
-    startBtn.style.display = 'block';
-}
+                } catch (err) {
+                    console.error("相機啟動失敗:", err);
+                    alert("啟動失敗原因: " + err.name + " -> " + err.message);
+                    startBtn.style.display = 'block';
+                }
             });
 
-            // 關閉彈出視窗，讓使用者能繼續掃描
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
