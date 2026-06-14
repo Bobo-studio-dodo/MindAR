@@ -5,18 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動系統</title>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r123/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image/mindar-image.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image/main.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image.prod.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
         
-        /* 相機容器 */
+        /* 相機畫面滿版設定 */
         #container { width: 100vw; height: 100vh; position: relative; }
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
 
-        /* 🟢 引導點擊的藍色按鈕（用來破解手機相機封鎖機制） */
+        /* 啟動相機的藍色按鈕 */
         #start-btn {
             position: fixed;
             top: 50%; left: 50%;
@@ -29,7 +27,7 @@
             font-size: 18px;
             font-weight: bold;
             cursor: pointer;
-            z-index: 10000; /* 確保在最上層 */
+            z-index: 10000;
             box-shadow: 0 4px 15px rgba(0,122,255,0.4);
         }
 
@@ -81,41 +79,48 @@
             const closeBtn = document.querySelector('#close-btn');
             const startBtn = document.querySelector('#start-btn');
 
-            // 1. 先初始化，但不急著啟動
-            const mindarThree = new window.MINDAR.IMAGE.Controller({
-                container: container,
-                imageTargetSrc: './card-targets.mind'
-            });
+            let mindarImage = null;
 
-            // 2. 監聽按鈕點擊事件（透過點擊事件向手機合法申請相機）
+            // 監聽按鈕點擊事件
             startBtn.addEventListener("click", async () => {
-                // 隱藏按鈕，避免阻擋畫面
                 startBtn.style.display = 'none';
 
                 try {
-                    // 在點擊事件內啟動相機
-                    await mindarThree.start();
-                    console.log("影像辨識系統啟動成功！");
+                    // 2. 在 1.1.4 版本中，建構式名稱叫 MindARImageController
+                    mindarImage = new window.MindARImageController({
+                        container: container,
+                        inputWidth: 640,
+                        inputHeight: 480
+                    });
 
-                    // 3. 監聽辨識結果
-                    mindarThree.onUpdate = (data) => {
+                    // 3. 載入卡片辨識檔
+                    await mindarImage.addImageTargets('./card-targets.mind');
+                    
+                    // 4. 開啟鏡頭並啟動辨識引擎
+                    await mindarImage.start();
+                    console.log("系統成功啟動，正在即時辨識卡片...");
+
+                    // 5. 每幀即時監聽鏡頭畫面
+                    mindarImage.onUpdate = (data) => {
                         if (data.type === 'update') {
                             const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                            // 辨識到第一張卡片
+                            
+                            // 當偵測到第一張卡片（targetIndex === 0）
                             if (targetIndex === 0 && !isScanning && trackingMatrix) {
+                                console.log("🎉 成功找出圖片！");
                                 popupModal.style.display = "flex";
                             }
                         }
                     };
 
                 } catch (err) {
-                    console.error("相機或辨識檔載入失敗:", err);
-                    alert("無法啟動相機，請檢查瀏覽器設定或權限！");
-                    startBtn.style.display = 'block'; // 失敗了就把按鈕顯示回來
+                    console.error("啟動失敗:", err);
+                    alert("無法啟動相機，請確認是否允許相機權限！");
+                    startBtn.style.display = 'block';
                 }
             });
 
-            // 關閉彈出視窗
+            // 關閉彈出視窗，讓使用者能繼續掃描
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
