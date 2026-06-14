@@ -10,11 +10,28 @@
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
         
-        /* 相機畫面滿版設定 */
+        /* 相機容器 */
         #container { width: 100vw; height: 100vh; position: relative; }
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
 
-        /* 辨識成功時彈出的圖片視窗 UI */
+        /* 🟢 引導點擊的藍色按鈕（用來破解手機相機封鎖機制） */
+        #start-btn {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 40px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10000; /* 確保在最上層 */
+            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+        }
+
+        /* 彈出圖片視窗 UI */
         #popup-modal {
             display: none; 
             position: fixed;
@@ -46,6 +63,8 @@
 </head>
 <body>
 
+    <button id="start-btn">開啟相機並開始掃描</button>
+
     <div id="container"></div>
 
     <div id="popup-modal">
@@ -54,46 +73,47 @@
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", async () => {
+        document.addEventListener("DOMContentLoaded", () => {
             const container = document.querySelector('#container');
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
+            const startBtn = document.querySelector('#start-btn');
 
-            // 1. 初始化純影像辨識控制器，直接載入你的卡片辨識檔
+            // 1. 先初始化，但不急著啟動
             const mindarThree = new window.MINDAR.IMAGE.Controller({
                 container: container,
                 imageTargetSrc: './card-targets.mind'
             });
 
-            try {
-                // 2. 啟動辨識引擎（這一步會自動跟瀏覽器請求相機權限）
-                await mindarThree.start();
-                console.log("影像辨識系統啟動成功，請對準卡片！");
+            // 2. 監聽按鈕點擊事件（透過點擊事件向手機合法申請相機）
+            startBtn.addEventListener("click", async () => {
+                // 隱藏按鈕，避免阻擋畫面
+                startBtn.style.display = 'none';
 
-                // 3. 每秒即時解析鏡頭畫面
-                // targetIndex: 0 代表你辨識檔裡面的第一張卡片
-                mindarThree.onUpdate = (data) => {
-                    if (data.type === 'update') {
-                        const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                        
-                        // 🟢 當偵測到第一張卡片出現在畫面中時
-                        if (targetIndex === 0 && !isScanning && trackingMatrix) {
-                            console.log("辨識成功！");
-                            
-                            // 方案一：如果你想要直接「跳轉網頁」，把下面這行的註解拿掉：
-                            // window.location.href = "https://www.google.com";
+                try {
+                    // 在點擊事件內啟動相機
+                    await mindarThree.start();
+                    console.log("影像辨識系統啟動成功！");
 
-                            // 方案二：如果你希望直接在網頁內「跳出設定好的圖片」：
-                            popupModal.style.display = "flex";
+                    // 3. 監聽辨識結果
+                    mindarThree.onUpdate = (data) => {
+                        if (data.type === 'update') {
+                            const {targetIndex, isScanning, trackingMatrix} = data.detail;
+                            // 辨識到第一張卡片
+                            if (targetIndex === 0 && !isScanning && trackingMatrix) {
+                                popupModal.style.display = "flex";
+                            }
                         }
-                    }
-                };
+                    };
 
-            } catch (err) {
-                console.error("相機或辨識檔載入失敗:", err);
-            }
+                } catch (err) {
+                    console.error("相機或辨識檔載入失敗:", err);
+                    alert("無法啟動相機，請檢查瀏覽器設定或權限！");
+                    startBtn.style.display = 'block'; // 失敗了就把按鈕顯示回來
+                }
+            });
 
-            // 點擊關閉按鈕，隱藏圖片視窗
+            // 關閉彈出視窗
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
