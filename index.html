@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卡片視覺辨識互動系統</title>
+    
+    <script src="https://aframe.io/releases/1.2.0/min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+        /* 滿版網頁與相機畫面設定 */
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        
+        /* 辨識成功時彈出的圖片視窗 (Modal) */
+        #popup-modal {
+            display: none; /* 預設隱藏 */
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #popup-modal img {
+            max-width: 85%;
+            max-height: 70%;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #close-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: #fff;
+            color: #333;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* 掃描時的 UI 引導框（非必要，但能提升使用者體驗） */
+        #scan-overlay {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60vw; height: 60vw;
+            max-width: 300px; max-height: 300px;
+            border: 3px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 15px;
+            pointer-events: none;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="scan-overlay"></div>
+
+    <div id="popup-modal">
+        <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
+        <button id="close-btn">關閉並繼續掃描</button>
+    </div>
+
+    <a-scene mindar-image="imageTargets: ./card-targets.mind; autoStart: true; uiScanning: no;" 
+             embedded color-space="sRGB" renderer="colorManagement: true, sortObjects: true" 
+             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+        
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <a-entity id="card-target-1" mindar-image-target="targetIndex: 0"></a-entity>
+
+    </a-scene>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const targetEntity = document.querySelector('#card-target-1');
+            const popupModal = document.querySelector('#popup-modal');
+            const closeBtn = document.querySelector('#close-btn');
+
+            // 🟢 情況 A：偵測到卡片（辨識成功！）
+            targetEntity.addEventListener("targetFound", event => {
+                console.log("成功辨識到卡片！");
+                
+                // 方案一：如果你希望直接跳轉去別的網頁，把下面那行的註解拿掉即可：
+                // window.location.href = "https://www.google.com";
+
+                // 方案二：如果你希望直接在網頁內「跳出設定好的圖片」：
+                popupModal.style.display = "flex"; 
+            });
+
+            // 🔴 情況 B：卡片移開鏡頭時的防呆（看需求可寫可不寫）
+            targetEntity.addEventListener("targetLost", event => {
+                console.log("卡片離開視線");
+            });
+
+            // 點擊關閉按鈕，隱藏彈出圖片，讓使用者能繼續掃描
+            closeBtn.addEventListener("click", () => {
+                popupModal.style.display = "none";
+            });
+        });
+    </script>
+
+</body>
+</html>
