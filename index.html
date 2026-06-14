@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動系統</title>
 
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
+
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
         #container { width: 100vw; height: 100vh; position: relative; }
@@ -67,14 +69,6 @@
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
 
-    <script type="module">
-        import { MindARImageController } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
-        
-        // 🌟 這行是關鍵！把密室裡的大腦綁到全域視窗，打破隔離
-        window.GlobalMindARController = MindARImageController;
-        console.log("MindAR 核心已成功綁定至全域空間！");
-    </script>
-
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const container = document.querySelector('#container');
@@ -88,8 +82,13 @@
                 startBtn.style.display = 'none';
 
                 try {
-                    // 🌟 呼叫我們剛剛在 window 上鋪好的全域控制器，這下絕對找得到了！
-                    mindarImage = new window.GlobalMindARController({
+                    // 🟢 嚴謹確認全域變數是否存在
+                    if (typeof window.MINDAR === 'undefined' || !window.MINDAR.IMAGE) {
+                        throw new Error("MindAR 核心庫尚未完全下載完畢，請稍候 3 秒再試一次！");
+                    }
+
+                    // 🚀 採用 1.2.5 全域標準規格初始化
+                    mindarImage = new window.MINDAR.IMAGE.MindARImageController({
                         container: container
                     });
 
@@ -98,7 +97,7 @@
                     
                     // 啟動相機
                     await mindarImage.start();
-                    console.log("相機與影像辨識成功同步開啟！");
+                    console.log("相機開啟成功，請對準卡片！");
 
                     // 監聽辨識事件
                     mindarImage.onUpdate = (data) => {
@@ -112,7 +111,8 @@
 
                 } catch (err) {
                     console.error("相機啟動失敗:", err);
-                    alert("啟動失敗原因: " + err.name + " -> " + err.message);
+                    // 彈出底層真正的錯誤
+                    alert("錯誤回報: " + err.message);
                     startBtn.style.display = 'block';
                 }
             });
