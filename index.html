@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>卡片視覺辨識互動</title>
+    <title>卡片視覺辨識互動系統</title>
     
-    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image/main.prod.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
         
-        /* 彈出圖片視窗 UI */
+        /* 相機畫面滿版設定 */
+        #container { width: 100vw; height: 100vh; position: relative; }
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+
+        /* 辨識成功時彈出的圖片視窗 UI */
         #popup-modal {
             display: none; 
             position: fixed;
@@ -43,33 +46,54 @@
 </head>
 <body>
 
+    <div id="container"></div>
+
     <div id="popup-modal">
         <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
 
-    <a-scene mindar-image="imageTargets: ./card-targets.mind; autoStart: true; uiLoading: no; uiScanning: no;" 
-             embedded color-space="sRGB" renderer="colorManagement: true, sortObjects: true" 
-             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-        
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity id="card-target-1" mindar-image-target="targetIndex: 0"></a-entity>
-
-    </a-scene>
-
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const targetEntity = document.querySelector('#card-target-1');
+        document.addEventListener("DOMContentLoaded", async () => {
+            const container = document.querySelector('#container');
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
 
-            // 🟢 當辨識成功時
-            targetEntity.addEventListener("targetFound", event => {
-                console.log("辨識成功！");
-                popupModal.style.display = "flex"; 
+            // 1. 初始化純影像辨識控制器，直接載入你的卡片辨識檔
+            const mindarThree = new window.MINDAR.IMAGE.Controller({
+                container: container,
+                imageTargetSrc: './card-targets.mind'
             });
 
-            // 點擊關閉按鈕
+            try {
+                // 2. 啟動辨識引擎（這一步會自動跟瀏覽器請求相機權限）
+                await mindarThree.start();
+                console.log("影像辨識系統啟動成功，請對準卡片！");
+
+                // 3. 每秒即時解析鏡頭畫面
+                // targetIndex: 0 代表你辨識檔裡面的第一張卡片
+                mindarThree.onUpdate = (data) => {
+                    if (data.type === 'update') {
+                        const {targetIndex, isScanning, trackingMatrix} = data.detail;
+                        
+                        // 🟢 當偵測到第一張卡片出現在畫面中時
+                        if (targetIndex === 0 && !isScanning && trackingMatrix) {
+                            console.log("辨識成功！");
+                            
+                            // 方案一：如果你想要直接「跳轉網頁」，把下面這行的註解拿掉：
+                            // window.location.href = "https://www.google.com";
+
+                            // 方案二：如果你希望直接在網頁內「跳出設定好的圖片」：
+                            popupModal.style.display = "flex";
+                        }
+                    }
+                };
+
+            } catch (err) {
+                console.error("相機或辨識檔載入失敗:", err);
+            }
+
+            // 點擊關閉按鈕，隱藏圖片視窗
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
