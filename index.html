@@ -10,23 +10,6 @@
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        
-        /* 🟢 啟動相機的藍色按鈕（完美點擊防禦） */
-        #start-btn {
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 15px 40px;
-            background: #007AFF;
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 10000;
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
-        }
 
         /* 彈出圖片視窗 UI */
         #popup-modal {
@@ -60,14 +43,12 @@
 </head>
 <body>
 
-    <button id="start-btn">開啟相機並開始掃描</button>
-
     <div id="popup-modal">
         <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
 
-    <a-scene mindar-image="imageTargets: ./card-targets.mind; autoStart: false; uiLoading: no; uiScanning: no;" 
+    <a-scene mindar-image="imageTargets: ./card-targets.mind; autoStart: true; uiLoading: yes; uiScanning: yes;" 
              embedded color-space="sRGB" renderer="colorManagement: true, sortObjects: true" 
              vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
         
@@ -81,37 +62,15 @@
         document.addEventListener("DOMContentLoaded", () => {
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
-            const startBtn = document.querySelector('#start-btn');
-            const sceneEl = document.querySelector('a-scene');
-
-            // 監聽按鈕點擊事件
-            startBtn.addEventListener("click", () => {
-                startBtn.style.display = 'none';
-
-                try {
-                    // 🚀 核心大補帖：直接動態叫 A-Frame 裡面的系統去開相機
-                    const sceneSystem = sceneEl.systems['mindar-image-system'];
-                    if (sceneSystem) {
-                        sceneSystem.start(); // 100% 呼叫相機權限
-                        console.log("相機啟動中...");
-                    } else {
-                        throw new Error("找不到 AR 引擎組件");
-                    }
-
-                } catch (err) {
-                    alert("錯誤回報: " + err.message);
-                    startBtn.style.display = 'block';
-                }
-            });
-
-            // 監聽第一張卡片辨識成功
             const targetEntity = document.querySelector('#card-target-1');
+
+            // 🟢 當相機辨識到卡片成功時
             targetEntity.addEventListener("targetFound", event => {
-                console.log("🎉 成功找出圖片！");
+                console.log("🎉 成功辨識卡片！跳出圖片！");
                 popupModal.style.display = "flex"; 
             });
 
-            // 點擊關閉按鈕
+            // 點擊關閉按鈕，隱藏視窗繼續掃描
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
