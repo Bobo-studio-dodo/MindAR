@@ -111,11 +111,12 @@
                         }
                     };
 
-                } catch (err) {
-                    console.error("啟動失敗:", err);
-                    alert("無法啟動相機，請確認是否允許相機權限！");
-                    startBtn.style.display = 'block';
-                }
+               } catch (err) {
+    console.error("相機啟動失敗:", err);
+    // 🟢 讓彈窗直接秀出系統底層的錯誤名稱
+    alert("啟動失敗原因: " + err.name + " -> " + err.message);
+    startBtn.style.display = 'block';
+}
             });
 
             // 關閉彈出視窗，讓使用者能繼續掃描
