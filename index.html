@@ -5,14 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動系統</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        #container { width: 100vw; height: 100vh; position: relative; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-
-        /* 啟動相機的藍色按鈕 */
+        
+        /* 🟢 啟動相機的藍色按鈕（完美點擊防禦） */
         #start-btn {
             position: fixed;
             top: 50%; left: 50%;
@@ -62,61 +61,57 @@
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="container"></div>
 
     <div id="popup-modal">
         <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
 
+    <a-scene mindar-image="imageTargets: ./card-targets.mind; autoStart: false; uiLoading: no; uiScanning: no;" 
+             embedded color-space="sRGB" renderer="colorManagement: true, sortObjects: true" 
+             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+        
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <a-entity id="card-target-1" mindar-image-target="targetIndex: 0"></a-entity>
+
+    </a-scene>
+
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const container = document.querySelector('#container');
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
             const startBtn = document.querySelector('#start-btn');
+            const sceneEl = document.querySelector('a-scene');
 
-            let mindarImage = null;
-
-            startBtn.addEventListener("click", async () => {
+            // 監聽按鈕點擊事件
+            startBtn.addEventListener("click", () => {
                 startBtn.style.display = 'none';
 
                 try {
-                    // 🟢 嚴謹確認全域變數是否存在
-                    if (typeof window.MINDAR === 'undefined' || !window.MINDAR.IMAGE) {
-                        throw new Error("MindAR 核心庫尚未完全下載完畢，請稍候 3 秒再試一次！");
+                    // 🚀 核心大補帖：直接動態叫 A-Frame 裡面的系統去開相機
+                    const sceneSystem = sceneEl.systems['mindar-image-system'];
+                    if (sceneSystem) {
+                        sceneSystem.start(); // 100% 呼叫相機權限
+                        console.log("相機啟動中...");
+                    } else {
+                        throw new Error("找不到 AR 引擎組件");
                     }
 
-                    // 🚀 採用 1.2.5 全域標準規格初始化
-                    mindarImage = new window.MINDAR.IMAGE.MindARImageController({
-                        container: container
-                    });
-
-                    // 載入辨識檔
-                    await mindarImage.addImageTargets('./card-targets.mind');
-                    
-                    // 啟動相機
-                    await mindarImage.start();
-                    console.log("相機開啟成功，請對準卡片！");
-
-                    // 監聽辨識事件
-                    mindarImage.onUpdate = (data) => {
-                        if (data.type === 'update') {
-                            const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                            if (targetIndex === 0 && !isScanning && trackingMatrix) {
-                                popupModal.style.display = "flex";
-                            }
-                        }
-                    };
-
                 } catch (err) {
-                    console.error("相機啟動失敗:", err);
-                    // 彈出底層真正的錯誤
                     alert("錯誤回報: " + err.message);
                     startBtn.style.display = 'block';
                 }
             });
 
+            // 監聽第一張卡片辨識成功
+            const targetEntity = document.querySelector('#card-target-1');
+            targetEntity.addEventListener("targetFound", event => {
+                console.log("🎉 成功找出圖片！");
+                popupModal.style.display = "flex"; 
+            });
+
+            // 點擊關閉按鈕
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
             });
