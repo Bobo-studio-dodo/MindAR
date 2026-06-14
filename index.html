@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動</title>
     
-<script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.2.0/aframe-master.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.2.0/aframe-master.min.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; }
@@ -53,26 +52,45 @@
              vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
         
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
         <a-entity id="card-target-1" mindar-image-target="targetIndex: 0"></a-entity>
 
     </a-scene>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const targetEntity = document.querySelector('#card-target-1');
-            const popupModal = document.querySelector('#popup-modal');
-            const closeBtn = document.querySelector('#close-btn');
-
-            // 🟢 當辨識成功時
-            targetEntity.addEventListener("targetFound", event => {
-                popupModal.style.display = "flex"; 
+        // 🛠️ 動態嚴格依序載入腳本，防範套件未定義錯誤
+        function loadMindAR() {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = "https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js";
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
             });
+        }
 
-            // 點擊關閉按鈕
-            closeBtn.addEventListener("click", () => {
-                popupModal.style.display = "none";
-            });
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                // 確保 A-Frame 存在後，才開始下載並掛載 MindAR
+                await loadMindAR();
+                console.log("MindAR 嚴格依序載入成功！");
+
+                const targetEntity = document.querySelector('#card-target-1');
+                const popupModal = document.querySelector('#popup-modal');
+                const closeBtn = document.querySelector('#close-btn');
+
+                // 🟢 當辨識成功時
+                targetEntity.addEventListener("targetFound", event => {
+                    popupModal.style.display = "flex"; 
+                });
+
+                // 點擊關閉按鈕
+                closeBtn.addEventListener("click", () => {
+                    popupModal.style.display = "none";
+                });
+
+            } catch (error) {
+                console.error("載入組件時發生錯誤:", error);
+            }
         });
     </script>
 
