@@ -3,84 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自然圖像辨識跳轉系統</title>
+    <title>卡片掃描跳轉系統 (Google視覺核)</title>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.2.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
 
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        
-        /* 手動按鈕：保障相機 100% 順暢喚醒 */
-        #start-btn {
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 15px 40px;
-            background: #007AFF;
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 10000;
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
-        }
+        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; }
+        #video-container { width: 100vw; height: 100vh; position: relative; }
+        video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
+        canvas { display: none; } /* 背景比對用，不顯示 */
 
+        #start-btn {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 15px 40px; background: #007AFF; color: white;
+            border: none; border-radius: 30px; font-size: 18px; font-weight: bold;
+            cursor: pointer; z-index: 10000; box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+        }
         #scan-hint {
-            position: fixed;
-            top: 20px; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 10px 25px;
-            border-radius: 20px;
-            font-size: 16px;
-            z-index: 9999;
-            pointer-events: none;
-            display: none;
-            text-align: center;
-            white-space: nowrap;
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: white; padding: 10px 25px;
+            border-radius: 20px; font-size: 16px; z-index: 9999; pointer-events: none; display: none;
         }
     </style>
 </head>
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="scan-hint">📷 請將手機鏡頭對準「乾淨的原始卡片」</div>
-
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" vr-mode-ui="enabled: false">
-        
-        <a-nft type="nft" url="./mycard" id="card-trigger" smooth="true" smoothCount="10" smoothTolerance=".01" smoothThreshold="5">
-            </a-nft>
-
-        <a-entity camera></a-entity>
-
-    </a-scene>
+    <div id="scan-hint">📷 請將手機鏡頭對準乾淨的原始卡片</div>
+    
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas-match"></canvas>
+    </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const startBtn = document.querySelector('#start-btn');
-            const scanHint = document.querySelector('#scan-hint');
-            const sceneEl = document.querySelector('a-scene');
-            const nftMarker = document.querySelector('#card-trigger');
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('start-btn');
+        const scanHint = document.getElementById('scan-hint');
+        const canvas = document.getElementById('canvas-match');
+        const ctx = canvas.getContext('2d');
 
-            sceneEl.pause();
+        let templateImg = new Image();
+        let isMatched = false;
 
-            startBtn.addEventListener('click', () => {
-                startBtn.style.display = 'none';
-                scanHint.style.display = 'block';
-                sceneEl.play();
-                console.log("NFT 影像辨識相機已安全啟動");
-            });
+        // 🚀 在背景預先載入你放在 GitHub 的原始卡片圖片
+        templateImg.src = './card.png'; 
 
-            // 🌟 當鏡頭「看見」你原本乾淨卡片上的插畫特徵點時
-            nftMarker.addEventListener('markerFound', () => {
-                console.log("🎉 偵測到原始插畫！直接執行網頁跳轉！");
-                window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
-            });
+        startBtn.addEventListener('click', async () => {
+            startBtn.style.display = 'none';
+            scanHint.style.display = 'block';
+
+            try {
+                // 1. 強制喚醒原生後置鏡頭，這一步我們之前測試過 100% 成功
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: "environment" } }
+                });
+                video.srcObject = stream;
+                
+                // 2. 鏡頭啟動後，開始每秒比對畫面
+                video.addEventListener('playable', () => {
+                    setTimeout(processVideo, 1000);
+                });
+                setTimeout(processVideo, 1000);
+
+            } catch (err) {
+                console.log("切換任意鏡頭測試...", err);
+                const looseStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = looseStream;
+                setTimeout(processVideo, 1000);
+            }
         });
+
+        // 🧠 Google OpenCV 像素特徵點即時比對演算法
+        function processVideo() {
+            if (isMatched) return;
+
+            try {
+                if (video.readyState === video.HAVE_ENOUGH_DATA && cv.Mat) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    // 抓取相機目前的當前幀像素
+                    let src = cv.imread('canvas-match');
+                    let templ = cv.imread(templateImg);
+                    let dst = new cv.Mat();
+                    let mask = new cv.Mat();
+
+                    // 進行範本匹配比對
+                    cv.matchTemplate(src, templ, dst, cv.TM_CCOEFF_NORMED, mask);
+                    let result = cv.minMaxLoc(dst, mask);
+                    
+                    // 🎯 辨識靈敏度門檻（0.65 代表有 65% 的線條和顏色吻合）
+                    if (result.maxVal > 0.65) {
+                        isMatched = true;
+                        console.log("🎉 像素特徵比對成功！");
+                        
+                        // 釋放記憶體
+                        src.delete(); templ.delete(); dst.delete(); mask.delete();
+                        
+                        // 🚀 執行直接跳轉
+                        window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
+                        return;
+                    }
+
+                    src.delete(); templ.delete(); dst.delete(); mask.delete();
+                }
+            } catch (e) {
+                console.log("比對運算中...");
+            }
+
+            // 循環持續監聽
+            if (!isMatched) {
+                requestAnimationFrame(processVideo);
+            }
+        }
     </script>
 
 </body>
