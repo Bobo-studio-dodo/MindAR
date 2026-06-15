@@ -3,160 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>卡片掃描跳轉系統 (提示框強化版-清晰優化)</title>
-
+    <title>終極除錯偵測系統</title>
     <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
-
     <style>
-        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
+        body { margin: 0; background: #000; font-family: monospace; overflow: hidden; color: #00ff00; }
         #video-container { width: 100vw; height: 100vh; position: relative; display: flex; justify-content: center; align-items: center; }
         video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; z-index: 1; }
-        canvas { display: none; } /* 背景比對用，不顯示 */
+        canvas { display: none; }
 
-        /* 剛進入網頁的啟動按鈕 */
+        /* 🟢 除錯專用數據看板 */
+        #debug-panel {
+            position: fixed; top: 10px; left: 10px; 
+            background: rgba(0,0,0,0.85); padding: 15px; 
+            border-radius: 8px; border: 1px solid #00ff00;
+            font-size: 14px; z-index: 10002; pointer-events: none;
+            line-height: 1.5; width: calc(100vw - 50px); max-width: 350px;
+        }
+
         #start-btn {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 18px 45px; background: #007AFF; color: white;
             border: none; border-radius: 30px; font-size: 19px; font-weight: bold;
             cursor: pointer; z-index: 10001; box-shadow: 0 4px 20px rgba(0,122,255,0.5);
-            transition: background 0.2s;
-        }
-        #start-btn:active { background: #0056b3; }
-
-        /* 頂部掃描提示 */
-        #scan-hint {
-            position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.7); color: white; padding: 12px 30px;
-            border-radius: 25px; font-size: 16px; z-index: 10000; pointer-events: none; display: none;
-            white-space: nowrap; letter-spacing: 1px;
         }
 
-        /* 🌟 修正：滿版半透明黑色遮罩 (擋在影片上面，z-index 設為 2)
-          將 background 變更為極淡的 0.2，徹底解決畫面變太暗的問題！
-        */
         #scan-mask {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.2); 
-            z-index: 2;
-            display: none;
-            justify-content: center;
-            align-items: center;
+            background: rgba(0, 0, 0, 0.2); z-index: 2; display: none;
+            justify-content: center; align-items: center;
         }
-
-        /* 🌟 核心美化：中央掃描框提示 (對齊卡片 3:4 比例)
-          利用 inset-shadow 做出邊框感
-        */
         #scan-region {
-            position: relative;
-            width: 70vw; /* 框框寬度佔手機寬度的 70% */
-            height: 93.3vw; /* 高度自動對齊你卡片的 3:4 比例 (70 * 4 / 3 = 93.3) */
+            position: relative; width: 70vw; height: 93.3vw;
             max-width: 320px; max-height: 426.6px;
-            border: 3px solid #fff;
-            border-radius: 16px;
-            background: transparent;
-            /* 做出圓角裁切效果，讓框框看起來是挖空的 */
-            /* 🌟 修正：同時也調淡框框外圍的遮罩暗度！ */
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.2); 
-            overflow: hidden;
+            border: 3px solid #00ff00; border-radius: 16px;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.3);
         }
-
-        /* 掃描框的四個角美化 */
-        #scan-region::before, #scan-region::after {
-            content: ''; position: absolute; width: 25px; height: 25px; border-color: #fff; border-style: solid; pointer-events: none;
-        }
-        /* 左上 */
-        #scan-region::before { top: 0; left: 0; border-width: 3px 0 0 3px; border-top-left-radius: 13px; }
-        /* 右下 */
-        #scan-region::after { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 13px; }
-
     </style>
 </head>
 <body>
 
+    <div id="debug-panel">
+        <div>[系統狀態] <span id="status" style="color:white">等待啟動...</span></div>
+        <div>[OpenCV 引擎] <span id="cv-status" style="color:red">尚未就緒</span></div>
+        <div>[卡片基準圖] <span id="img-status" style="color:red">尚未載入</span></div>
+        <hr style="border-color:#00ff00">
+        <div style="font-size: 16px; font-weight:bold;">實時吻合度：<span id="score" style="color:#ffcc00">0.00</span></div>
+        <div>跳轉門檻值：<span style="color:white">0.50</span></div>
+    </div>
+
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="scan-hint">📷 請將卡片對齊下方中央框框</div>
     
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
-        
         <div id="scan-mask">
             <div id="scan-region"></div>
         </div>
-
         <canvas id="canvas-match"></canvas>
     </div>
 
     <script>
         const video = document.getElementById('video');
         const startBtn = document.getElementById('start-btn');
-        const scanHint = document.getElementById('scan-hint');
         const scanMask = document.getElementById('scan-mask');
         const canvas = document.getElementById('canvas-match');
         const ctx = canvas.getContext('2d');
 
+        // 數據看板元件
+        const txtStatus = document.getElementById('status');
+        const txtCv = document.getElementById('cv-status');
+        const txtImg = document.getElementById('img-status');
+        const txtScore = document.getElementById('score');
+
         let templateImg = new Image();
         let isMatched = false;
 
-        // 🚀 在背景預先載入你放在 GitHub 的原始卡片圖片 (card.png)
+        // 定時檢查 OpenCV 是否加載成功
+        let cvCheckInterval = setInterval(() => {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                txtCv.innerText = "✅ 已成功載入";
+                txtCv.style.color = "#00ff00";
+                clearInterval(cvCheckInterval);
+            }
+        }, 500);
+
+        // 監聽卡片圖片載入狀態
         templateImg.src = './card.png'; 
+        templateImg.onload = () => {
+            txtImg.innerText = "✅ 載入成功 (card.png)";
+            txtImg.style.color = "#00ff00";
+        };
+        templateImg.onerror = () => {
+            txtImg.innerText = "❌ 找不到實體檔案！";
+            txtImg.style.color = "red";
+        };
 
         startBtn.addEventListener('click', async () => {
             startBtn.style.display = 'none';
-            scanHint.style.display = 'block';
-            scanMask.style.display = 'flex'; // 顯示半透明遮罩與框框
+            scanMask.style.display = 'flex';
+            txtStatus.innerText = "相機啟動中...";
 
             try {
-                // 1. 強制喚醒原生後置鏡頭
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" }, width: 640, height: 480 } // 強制硬體解析度，提升背景比對效能
+                    video: { facingMode: { exact: "environment" }, width: 640, height: 480 }
                 });
                 video.srcObject = stream;
+                txtStatus.innerText = "🔍 正在實時比對中...";
                 
-                // 2. 鏡頭啟動後，直接開始每秒比對畫面
-                video.addEventListener('canplay', () => {
-                    setTimeout(processVideo, 1500);
-                });
-                setTimeout(processVideo, 1500);
-
+                video.addEventListener('canplay', () => { setTimeout(processVideo, 1000); });
+                setTimeout(processVideo, 1000);
             } catch (err) {
-                console.log("切換任意鏡頭測試...", err);
+                txtStatus.innerText = "相機出錯，嘗試相容模式...";
                 const looseStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = looseStream;
-                setTimeout(processVideo, 1500);
+                setTimeout(processVideo, 1000);
             }
         });
 
-        // 🧠 Google OpenCV 像素特徵點即時比對演算法
         function processVideo() {
             if (isMatched) return;
 
             try {
                 if (video.readyState === video.HAVE_ENOUGH_DATA && typeof cv !== 'undefined' && cv.Mat) {
-                    // 將相機畫面渲染到背景畫布，保持比對效能
                     canvas.width = 640; 
                     canvas.height = 480;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                    // 抓取相機目前的當前幀像素
                     let src = cv.imread('canvas-match');
                     let templ = cv.imread(templateImg);
                     let dst = new cv.Mat();
                     let mask = new cv.Mat();
 
-                    // 進行範本匹配比對
                     cv.matchTemplate(src, templ, dst, cv.TM_CCOEFF_NORMED, mask);
                     let result = cv.minMaxLoc(dst, mask);
                     
-                    // 🎯 🌟 核心修正：靈敏度退回昨晚大成功的數值：`0.65`！
-                    // 確保使用者只要把卡片放進框框裡，即使光線或手晃，都能瞬間識別成功！
-                    if (result.maxVal > 0.4) {
+                    // 🟢 將運算數值直接噴在螢幕上！
+                    let currentScore = result.maxVal.toFixed(2);
+                    txtScore.innerText = currentScore;
+
+                    // 🎯 暫時將門檻鎖定在 0.50
+                    if (result.maxVal > 0.50) {
                         isMatched = true;
-                        console.log("🎉 像素特徵比對成功！");
-                        
-                        // 釋放記憶體
+                        txtStatus.innerText = "🎉 比對成功！跳轉中...";
                         src.delete(); templ.delete(); dst.delete(); mask.delete();
-                        
-                        // 🚀 執行直接跳轉
                         window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
                         return;
                     }
@@ -164,10 +152,10 @@
                     src.delete(); templ.delete(); dst.delete(); mask.delete();
                 }
             } catch (e) {
-                // 比對運算中，可忽略此錯誤
+                // 運算中出錯，在看板顯示錯誤
+                txtStatus.innerText = "運算發生異常: " + e.message;
             }
 
-            // 循環持續監聽
             if (!isMatched) {
                 requestAnimationFrame(processVideo);
             }
