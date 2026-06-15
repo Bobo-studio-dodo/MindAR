@@ -3,22 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>卡片視覺辨識互動系統</title>
+    <title>卡片掃描跳轉系統 (AR.js完美版)</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        #container { width: 100vw; height: 100vh; position: relative; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-
-        /* 啟動相機的藍色按鈕 */
+        
+        /* 手動按鈕：保障手機相機 100% 順暢喚醒 */
         #start-btn {
             position: fixed;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 40px;
-            background: #007AFF;
+            background: #FF5722;
             color: white;
             border: none;
             border-radius: 30px;
@@ -26,99 +25,63 @@
             font-weight: bold;
             cursor: pointer;
             z-index: 10000;
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+            box-shadow: 0 4px 15px rgba(255,87,34,0.4);
         }
 
-        /* 彈出圖片視窗 UI */
-        #popup-modal {
-            display: none; 
+        #scan-hint {
             position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-        #popup-modal img {
-            max-width: 85%;
-            max-height: 70%;
-            border-radius: 12px;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.7);
-        }
-        #close-btn {
-            margin-top: 20px;
-            padding: 12px 35px;
-            background: #fff;
-            color: #333;
-            border: none;
-            border-radius: 25px;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 25px;
+            border-radius: 20px;
             font-size: 16px;
-            cursor: pointer;
-            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
         }
     </style>
 </head>
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="container"></div>
+    <div id="scan-hint">📷 請將手機鏡頭對準實體卡片</div>
 
-    <div id="popup-modal">
-        <img id="popup-img" src="https://picsum.photos/600/800" alt="Result">
-        <button id="close-btn">關閉並繼續掃描</button>
-    </div>
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;" vr-mode-ui="enabled: false">
+        
+        <a-marker type="pattern" url="./pattern-marker.patt" id="card-trigger">
+            </a-marker>
 
-    <script type="module">
+        <a-entity camera></a-entity>
+
+    </a-scene>
+
+    <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const container = document.querySelector('#container');
-            const popupModal = document.querySelector('#popup-modal');
-            const closeBtn = document.querySelector('#close-btn');
             const startBtn = document.querySelector('#start-btn');
+            const scanHint = document.querySelector('#scan-hint');
+            const sceneEl = document.querySelector('a-scene');
+            const marker = document.querySelector('#card-trigger');
 
-            let mindarImage = null;
+            // 1. 預設先讓 AR 引擎暫停，等手動喚醒
+            sceneEl.pause();
 
-            startBtn.addEventListener("click", async () => {
+            startBtn.addEventListener('click', () => {
                 startBtn.style.display = 'none';
-
-                try {
-                    // 🚀 檢查 1.2.5 最新版全域變數
-                    if (!window.MINDAR || !window.MINDAR.IMAGE) {
-                        throw new Error("影像識別引擎載入失敗，請重新整理網頁！");
-                    }
-
-                    // 初始化影像控制器
-                    mindarImage = new window.MINDAR.IMAGE.MindARImageController({
-                        container: container
-                    });
-
-                    // 載入你在新版網頁生成的卡片辨識檔
-                    await mindarImage.addImageTargets('./card-targets.mind');
-                    
-                    // 啟動相機
-                    await mindarImage.start();
-                    console.log("最新版相機與影像辨識同步開啟成功！");
-
-                    // 監聽辨識事件
-                    mindarImage.onUpdate = (data) => {
-                        if (data.type === 'update') {
-                            const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                            // targetIndex === 0 代表第一張卡片
-                            if (targetIndex === 0 && !isScanning && trackingMatrix) {
-                                popupModal.style.display = "flex";
-                            }
-                        }
-                    };
-
-                } catch (err) {
-                    console.error("啟動失敗:", err);
-                    alert("錯誤回報: " + err.message);
-                    startBtn.style.display = 'block';
-                }
+                scanHint.style.display = 'block';
+                
+                // 🚀 安全喚醒相機
+                sceneEl.play();
+                console.log("AR.js 相機已成功強制重啟");
             });
 
-            closeBtn.addEventListener("click", () => {
-                popupModal.style.display = "none";
+            // 2. 🌟 核心功能：只要鏡頭捕捉到你的自訂卡片
+            marker.addEventListener('markerFound', () => {
+                console.log("🎉 成功捕捉到卡片！準備執行網頁跳轉！");
+                
+                // 🚀 跳轉到你的目的地網頁
+                window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
             });
         });
     </script>
