@@ -3,36 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>卡片掃描跳轉系統 (Google視覺核)</title>
+    <title>卡片掃描跳轉系統 (提示框強化版)</title>
 
     <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
 
     <style>
-        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; }
-        #video-container { width: 100vw; height: 100vh; position: relative; }
-        video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
+        body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
+        #video-container { width: 100vw; height: 100vh; position: relative; display: flex; justify-content: center; align-items: center; }
+        video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; z-index: 1; }
         canvas { display: none; } /* 背景比對用，不顯示 */
 
+        /* 剛進入網頁的啟動按鈕 */
         #start-btn {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 15px 40px; background: #007AFF; color: white;
-            border: none; border-radius: 30px; font-size: 18px; font-weight: bold;
-            cursor: pointer; z-index: 10000; box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+            padding: 18px 45px; background: #007AFF; color: white;
+            border: none; border-radius: 30px; font-size: 19px; font-weight: bold;
+            cursor: pointer; z-index: 10001; box-shadow: 0 4px 20px rgba(0,122,255,0.5);
+            transition: background 0.2s;
         }
+        #start-btn:active { background: #0056b3; }
+
+        /* 頂部掃描提示 */
         #scan-hint {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.7); color: white; padding: 10px 25px;
-            border-radius: 20px; font-size: 16px; z-index: 9999; pointer-events: none; display: none;
+            position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: white; padding: 12px 30px;
+            border-radius: 25px; font-size: 16px; z-index: 10000; pointer-events: none; display: none;
+            white-space: nowrap; letter-spacing: 1px;
         }
+
+        /* 🌟 核心美化：滿版半透明黑色遮罩 
+          z-index 設為 2，擋在影片上面
+        */
+        #scan-mask {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.5); /* 這裡控制相機畫面的暗度 */
+            z-index: 2;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 🌟 核心美化：中央掃描框提示 (對齊你卡片的 3:4 比例)
+          利用 inset-shadow 做出邊框感
+        */
+        #scan-region {
+            position: relative;
+            width: 70vw; /* 框框寬度佔手機寬度的 70% */
+            height: 93.3vw; /* 高度自動對齊你卡片的 3:4 比例 (70 * 4 / 3 = 93.3) */
+            max-width: 320px; max-height: 426.6px;
+            border: 3px solid #fff;
+            border-radius: 16px;
+            background: transparent;
+            /* 做出圓角裁切效果，讓框框看起來是挖空的 */
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5); /* 這是控制框框外面的暗度 */
+            overflow: hidden;
+        }
+
+        /* 掃描框的四個角美化 (可選，讓畫面更有科技感) */
+        #scan-region::before, #scan-region::after {
+            content: ''; position: absolute; width: 25px; height: 25px; border-color: #fff; border-style: solid; pointer-events: none;
+        }
+        /* 左上 */
+        #scan-region::before { top: 0; left: 0; border-width: 3px 0 0 3px; border-top-left-radius: 13px; }
+        /* 右下 */
+        #scan-region::after { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 13px; }
+
     </style>
 </head>
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="scan-hint">📷 請將手機鏡頭對準乾淨的原始卡片</div>
+    <div id="scan-hint">📷 請將卡片對齊下方中央框框</div>
     
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
+        
+        <div id="scan-mask">
+            <div id="scan-region"></div>
+        </div>
+
         <canvas id="canvas-match"></canvas>
     </div>
 
@@ -40,37 +89,39 @@
         const video = document.getElementById('video');
         const startBtn = document.getElementById('start-btn');
         const scanHint = document.getElementById('scan-hint');
+        const scanMask = document.getElementById('scan-mask');
         const canvas = document.getElementById('canvas-match');
         const ctx = canvas.getContext('2d');
 
         let templateImg = new Image();
         let isMatched = false;
 
-        // 🚀 在背景預先載入你放在 GitHub 的原始卡片圖片
+        // 🚀 在背景預先載入你放在 GitHub 的原始卡片圖片 (card.png)
         templateImg.src = './card.png'; 
 
         startBtn.addEventListener('click', async () => {
             startBtn.style.display = 'none';
             scanHint.style.display = 'block';
+            scanMask.style.display = 'flex'; // 顯示半透明遮罩與框框
 
             try {
-                // 1. 強制喚醒原生後置鏡頭，這一步我們之前測試過 100% 成功
+                // 1. 強制喚醒原生後置鏡頭
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } }
+                    video: { facingMode: { exact: "environment" }, width: 640, height: 480 } // 強制硬體解析度，提升背景比對效能
                 });
                 video.srcObject = stream;
                 
-                // 2. 鏡頭啟動後，開始每秒比對畫面
-                video.addEventListener('playable', () => {
-                    setTimeout(processVideo, 1000);
+                // 2. 鏡頭啟動後，直接開始每秒比對畫面
+                video.addEventListener('canplay', () => {
+                    setTimeout(processVideo, 1500);
                 });
-                setTimeout(processVideo, 1000);
+                setTimeout(processVideo, 1500);
 
             } catch (err) {
                 console.log("切換任意鏡頭測試...", err);
                 const looseStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = looseStream;
-                setTimeout(processVideo, 1000);
+                setTimeout(processVideo, 1500);
             }
         });
 
@@ -79,9 +130,10 @@
             if (isMatched) return;
 
             try {
-                if (video.readyState === video.HAVE_ENOUGH_DATA && cv.Mat) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
+                if (video.readyState === video.HAVE_ENOUGH_DATA && typeof cv !== 'undefined' && cv.Mat) {
+                    // 核心修正：將相機畫面渲染到背景畫布，保持比對效能
+                    canvas.width = 640; 
+                    canvas.height = 480;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                     // 抓取相機目前的當前幀像素
@@ -94,8 +146,8 @@
                     cv.matchTemplate(src, templ, dst, cv.TM_CCOEFF_NORMED, mask);
                     let result = cv.minMaxLoc(dst, mask);
                     
-                    // 🎯 辨識靈敏度門檻（0.65 代表有 65% 的線條和顏色吻合）
-                    if (result.maxVal > 0.65) {
+                    // 🎯 辨識靈敏度門檻（調高到 0.70，確保使用者必須把卡片放近並對齊，避免誤觸發）
+                    if (result.maxVal > 0.70) {
                         isMatched = true;
                         console.log("🎉 像素特徵比對成功！");
                         
@@ -110,7 +162,7 @@
                     src.delete(); templ.delete(); dst.delete(); mask.delete();
                 }
             } catch (e) {
-                console.log("比對運算中...");
+                // 比對運算中，可忽略此錯誤
             }
 
             // 循環持續監聽
