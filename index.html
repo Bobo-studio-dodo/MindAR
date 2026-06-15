@@ -5,11 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡片視覺辨識互動系統</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js" crossorigin="anonymous"></script>
 
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
         #container { width: 100vw; height: 100vh; position: relative; }
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+
+        /* 啟動相機的藍色按鈕 */
+        #start-btn {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 40px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10000;
+            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
+        }
 
         /* 彈出圖片視窗 UI */
         #popup-modal {
@@ -43,6 +61,7 @@
 </head>
 <body>
 
+    <button id="start-btn">開啟相機並開始掃描</button>
     <div id="container"></div>
 
     <div id="popup-modal">
@@ -50,47 +69,53 @@
         <button id="close-btn">關閉並繼續掃描</button>
     </div>
 
-    <script>
-        document.addEventListener("DOMContentLoaded", async () => {
+    <script type="module">
+        window.addEventListener("DOMContentLoaded", () => {
             const container = document.querySelector('#container');
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
+            const startBtn = document.querySelector('#start-btn');
 
             let mindarImage = null;
 
-            try {
-                // 🚀 嚴謹確認新版全域變數是否存在
-                if (typeof window.MINDAR === 'undefined' || !window.MINDAR.IMAGE) {
-                    throw new Error("大腦套件尚未下載完畢");
-                }
+            startBtn.addEventListener("click", async () => {
+                startBtn.style.display = 'none';
 
-                // 🚀 採用 1.2.5 全域最新規格初始化
-                mindarImage = new window.MINDAR.IMAGE.MindARImageController({
-                    container: container
-                });
-
-                // 載入你在 Scale 1 下載的新辨識檔
-                await mindarImage.addImageTargets('./card-targets.mind');
-                
-                // 直接開啟鏡頭（因為剛才測試過原生相機沒問題，這裡可以直接安全啟動）
-                await mindarImage.start();
-                console.log("最新版影像辨識系統啟動成功！");
-
-                // 監聽辨識事件
-                mindarImage.onUpdate = (data) => {
-                    if (data.type === 'update') {
-                        const {targetIndex, isScanning, trackingMatrix} = data.detail;
-                        if (targetIndex === 0 && !isScanning && trackingMatrix) {
-                            console.log("🎉 成功找出圖片！");
-                            popupModal.style.display = "flex";
-                        }
+                try {
+                    // 檢查全域變數是否安全載入
+                    if (!window.MINDAR || !window.MINDAR.IMAGE) {
+                        throw new Error("影像識別引擎載入失敗，請檢查網路連線或重新整理！");
                     }
-                };
 
-            } catch (err) {
-                console.error("啟動失敗:", err);
-                alert("錯誤回報: " + err.message);
-            }
+                    // 🚀 1.2.5 最新版全域標準初始化（完全相容新版 Scale 1 檔案）
+                    mindarImage = new window.MINDAR.IMAGE.MindARImageController({
+                        container: container
+                    });
+
+                    // 載入你在新版網頁生成的卡片辨識檔
+                    await mindarImage.addImageTargets('./card-targets.mind');
+                    
+                    // 啟動相機
+                    await mindarImage.start();
+                    console.log("最新版相機與影像辨識同步開啟成功！");
+
+                    // 監聽辨識事件
+                    mindarImage.onUpdate = (data) => {
+                        if (data.type === 'update') {
+                            const {targetIndex, isScanning, trackingMatrix} = data.detail;
+                            // targetIndex === 0 代表第一張卡片
+                            if (targetIndex === 0 && !isScanning && trackingMatrix) {
+                                popupModal.style.display = "flex";
+                            }
+                        }
+                    };
+
+                } catch (err) {
+                    console.error("啟動失敗:", err);
+                    alert("錯誤回報: " + err.message);
+                    startBtn.style.display = 'block';
+                }
+            });
 
             closeBtn.addEventListener("click", () => {
                 popupModal.style.display = "none";
