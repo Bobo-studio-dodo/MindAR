@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>卡片掃描跳轉系統 (提示框強化版)</title>
+    <title>卡片掃描跳轉系統 (提示框強化版-清晰優化)</title>
 
     <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
 
@@ -31,19 +31,19 @@
             white-space: nowrap; letter-spacing: 1px;
         }
 
-        /* 🌟 核心美化：滿版半透明黑色遮罩 
-          z-index 設為 2，擋在影片上面
+        /* 🌟 修正：滿版半透明黑色遮罩 (擋在影片上面，z-index 設為 2)
+          將 background 變更為極淡的 0.2，徹底解決畫面變太暗的問題！
         */
         #scan-mask {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.5); /* 這裡控制相機畫面的暗度 */
+            background: rgba(0, 0, 0, 0.2); 
             z-index: 2;
             display: none;
             justify-content: center;
             align-items: center;
         }
 
-        /* 🌟 核心美化：中央掃描框提示 (對齊你卡片的 3:4 比例)
+        /* 🌟 核心美化：中央掃描框提示 (對齊卡片 3:4 比例)
           利用 inset-shadow 做出邊框感
         */
         #scan-region {
@@ -55,11 +55,12 @@
             border-radius: 16px;
             background: transparent;
             /* 做出圓角裁切效果，讓框框看起來是挖空的 */
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5); /* 這是控制框框外面的暗度 */
+            /* 🌟 修正：同時也調淡框框外圍的遮罩暗度！ */
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.2); 
             overflow: hidden;
         }
 
-        /* 掃描框的四個角美化 (可選，讓畫面更有科技感) */
+        /* 掃描框的四個角美化 */
         #scan-region::before, #scan-region::after {
             content: ''; position: absolute; width: 25px; height: 25px; border-color: #fff; border-style: solid; pointer-events: none;
         }
@@ -131,7 +132,7 @@
 
             try {
                 if (video.readyState === video.HAVE_ENOUGH_DATA && typeof cv !== 'undefined' && cv.Mat) {
-                    // 核心修正：將相機畫面渲染到背景畫布，保持比對效能
+                    // 將相機畫面渲染到背景畫布，保持比對效能
                     canvas.width = 640; 
                     canvas.height = 480;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -146,8 +147,9 @@
                     cv.matchTemplate(src, templ, dst, cv.TM_CCOEFF_NORMED, mask);
                     let result = cv.minMaxLoc(dst, mask);
                     
-                    // 🎯 辨識靈敏度門檻（調高到 0.70，確保使用者必須把卡片放近並對齊，避免誤觸發）
-                    if (result.maxVal > 0.70) {
+                    // 🎯 🌟 核心修正：靈敏度退回昨晚大成功的數值：`0.65`！
+                    // 確保使用者只要把卡片放進框框裡，即使光線或手晃，都能瞬間識別成功！
+                    if (result.maxVal > 0.65) {
                         isMatched = true;
                         console.log("🎉 像素特徵比對成功！");
                         
