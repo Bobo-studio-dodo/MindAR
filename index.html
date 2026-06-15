@@ -70,7 +70,7 @@
     </div>
 
     <script type="module">
-        window.addEventListener("DOMContentLoaded", () => {
+        document.addEventListener("DOMContentLoaded", () => {
             const container = document.querySelector('#container');
             const popupModal = document.querySelector('#popup-modal');
             const closeBtn = document.querySelector('#close-btn');
@@ -82,12 +82,12 @@
                 startBtn.style.display = 'none';
 
                 try {
-                    // 檢查全域變數是否安全載入
+                    // 🚀 檢查 1.2.5 最新版全域變數
                     if (!window.MINDAR || !window.MINDAR.IMAGE) {
-                        throw new Error("影像識別引擎載入失敗，請檢查網路連線或重新整理！");
+                        throw new Error("影像識別引擎載入失敗，請重新整理網頁！");
                     }
 
-                    // 🚀 1.2.5 最新版全域標準初始化（完全相容新版 Scale 1 檔案）
+                    // 初始化影像控制器
                     mindarImage = new window.MINDAR.IMAGE.MindARImageController({
                         container: container
                     });
