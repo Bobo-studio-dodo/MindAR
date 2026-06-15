@@ -9,7 +9,7 @@
 
     <style>
         body { margin: 0; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
-        #video-container { width: 100vw; height: 100vh; position: relative; display: flex; justify-content: center; align-items: center; }
+        #video-container { width: 100vw; height: 100vh; position: relative; }
         video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; z-index: 1; }
         canvas { display: none; } 
 
@@ -29,43 +29,32 @@
             white-space: nowrap; letter-spacing: 1px;
         }
 
-        /* 滿版半透明綠色提示遮罩 */
-        #scan-mask {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.2); z-index: 2; display: none;
-            justify-content: center; align-items: center;
+        /* 🌟 終極修正：把框框整體放大 (從 65vw 放大到 85vw) */
+        /* 這樣能物理上逼迫使用者把手機靠得非常近，讓卡片在相機畫面裡呈現「滿版」狀態，精準對齊大圖！ */
+        #perfect-scan-frame {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85vw; height: 113.3vw; /* 保持 3:4 比例 */
+            max-width: 450px; max-height: 600px; /* 提高最大上限 */
+            border: 4px solid #00ff00; 
+            border-radius: 20px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.6); 
+            z-index: 9999;
+            pointer-events: none; 
+            display: none;
         }
-
-        /* 中央綠色對齊框（純視覺提示，不影響後台 OpenCV 像素計算） */
-        #scan-region {
-            position: relative;
-            width: 65vw; height: 86.6vw; /* 稍微縮小一點點，強迫使用者把卡片拿近 */
-            max-width: 280px; max-height: 373.3px;
-            border: 3px solid #00ff00; 
-            border-radius: 16px;
-            background: transparent;
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.25); 
-        }
-
-        #scan-region::before, #scan-region::after {
-            content: ''; position: absolute; width: 25px; height: 25px; border-color: #00ff00; border-style: solid; pointer-events: none;
-        }
-        #scan-region::before { top: 0; left: 0; border-width: 3px 0 0 3px; border-top-left-radius: 13px; }
-        #scan-region::after { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 13px; }
     </style>
 </head>
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="scan-hint">📷 請將卡片放進綠色框框內</div>
+    <div id="scan-hint">📷 請將卡片靠近並填滿綠色框框</div>
+    
+    <div id="perfect-scan-frame"></div>
     
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
-        
-        <div id="scan-mask">
-            <div id="scan-region"></div>
-        </div>
-
         <canvas id="canvas-match"></canvas>
     </div>
 
@@ -73,7 +62,7 @@
         const video = document.getElementById('video');
         const startBtn = document.getElementById('start-btn');
         const scanHint = document.getElementById('scan-hint');
-        const scanMask = document.getElementById('scan-mask');
+        const scanFrame = document.getElementById('perfect-scan-frame');
         const canvas = document.getElementById('canvas-match');
         const ctx = canvas.getContext('2d');
 
@@ -85,20 +74,20 @@
         startBtn.addEventListener('click', async () => {
             startBtn.style.display = 'none';
             scanHint.style.display = 'block';
-            scanMask.style.display = 'flex'; 
+            scanFrame.style.display = 'block'; 
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" }, width: 640, height: 480 }
+                    video: { facingMode: { exact: "environment" } }
                 });
                 video.srcObject = stream;
                 
-                video.addEventListener('canplay', () => { setTimeout(processVideo, 1500); });
-                setTimeout(processVideo, 1500);
+                video.addEventListener('canplay', () => { setTimeout(processVideo, 1000); });
+                setTimeout(processVideo, 1000);
             } catch (err) {
                 const looseStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = looseStream;
-                setTimeout(processVideo, 1500);
+                setTimeout(processVideo, 1000);
             }
         });
 
@@ -107,51 +96,29 @@
 
             try {
                 if (video.readyState === video.HAVE_ENOUGH_DATA && typeof cv !== 'undefined' && cv.Mat) {
-                    canvas.width = 640; 
-                    canvas.height = 480;
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                    // 1. 讀取完整的相機畫面 (640x480)，完全不裁切，避免任何解析度或旋轉造成的座標衝突！
                     let src = cv.imread('canvas-match');
                     let templ = cv.imread(templateImg);
-                    
-                    // 2. 🟢 終極修正：建立一個跟相機一模一樣大 (640x480) 的畫布，把 card.png 縮小置中放進去
-                    // 這樣卡片在背景的大小，就會剛好等同於使用者把卡片放進綠色框框時的大小！
-                    let bigTempl = cv.Mat.zeros(480, 640, templ.type());
-                    
-                    // 計算縮小後的卡片尺寸（寬 240，高 320，完美符合 3:4）
-                    let resizedTempl = new cv.Mat();
-                    let dsize = new cv.Size(240, 320);
-                    cv.resize(templ, resizedTempl, dsize, 0, 0, cv.INTER_AREA);
-                    
-                    // 把縮小後的卡片，精準貼到 640x480 背景的正中央 (X: 200, Y: 80)
-                    let roi = bigTempl.roi(new cv.Rect(200, 80, 240, 320));
-                    resizedTempl.copyTo(roi);
-
                     let dst = new cv.Mat();
                     let mask = new cv.Mat();
 
-                    // 3. 進行全圖範本匹配
-                    cv.matchTemplate(src, bigTempl, dst, cv.TM_CCOEFF_NORMED, mask);
+                    cv.matchTemplate(src, templ, dst, cv.TM_CCOEFF_NORMED, mask);
                     let result = cv.minMaxLoc(dst, mask);
                     
-                    // 🎯 4. 安全平衡門檻值：設定在 0.42 (因為全圖包含背景雜訊，這個分數在對齊時最靈敏且絕對安全)
-                    if (result.maxVal > 0.42) {
+                    console.log("當前比對數值：", result.maxVal);
+
+                    // 🎯 將門檻穩定在最靈敏的 0.45 
+                    if (result.maxVal > 0.45) {
                         isMatched = true;
-                        console.log("🎉 全圖對齊匹配成功！分數：", result.maxVal);
-                        
-                        // 記憶體解鎖
-                        src.delete(); templ.delete(); bigTempl.delete();
-                        resizedTempl.delete(); roi.delete(); dst.delete(); mask.delete();
-                        
-                        // 🚀 直接執行網頁跳轉！
+                        src.delete(); templ.delete(); dst.delete(); mask.delete();
                         window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
                         return;
                     }
 
-                    // 釋放記憶體避免手機瀏覽器閃退
-                    src.delete(); templ.delete(); bigTempl.delete();
-                    resizedTempl.delete(); roi.delete(); dst.delete(); mask.delete();
+                    src.delete(); templ.delete(); dst.delete(); mask.delete();
                 }
             } catch (e) {
                 // 運算中
