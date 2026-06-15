@@ -13,7 +13,7 @@
         video { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; z-index: 1; }
         canvas { display: none; } 
 
-        /* 剛進入網頁的啟動按鈕 */
+        /* 啟動按鈕 */
         #start-btn {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 18px 45px; background: #007AFF; color: white;
@@ -21,7 +21,7 @@
             cursor: pointer; z-index: 10001; box-shadow: 0 4px 20px rgba(0,122,255,0.5);
         }
 
-        /* 頂部掃描提示 */
+        /* 頂部提示 */
         #scan-hint {
             position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.7); color: white; padding: 12px 30px;
@@ -29,26 +29,24 @@
             white-space: nowrap; letter-spacing: 1px;
         }
 
-        /* 滿版半透明黑色遮罩 */
+        /* 滿版半透明綠色提示遮罩 */
         #scan-mask {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0, 0, 0, 0.2); z-index: 2; display: none;
             justify-content: center; align-items: center;
         }
 
-        /* 中央掃描框提示 (精準對齊卡片的 3:4 比例) */
+        /* 中央綠色對齊框（純視覺提示，不影響後台 OpenCV 像素計算） */
         #scan-region {
             position: relative;
-            width: 70vw; height: 93.3vw;
-            max-width: 320px; max-height: 426.6px;
-            border: 3px solid #00ff00; /* 綠色對齊框 */
+            width: 65vw; height: 86.6vw; /* 稍微縮小一點點，強迫使用者把卡片拿近 */
+            max-width: 280px; max-height: 373.3px;
+            border: 3px solid #00ff00; 
             border-radius: 16px;
             background: transparent;
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.3); 
-            overflow: hidden;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.25); 
         }
 
-        /* 掃描框的四個角美化 */
         #scan-region::before, #scan-region::after {
             content: ''; position: absolute; width: 25px; height: 25px; border-color: #00ff00; border-style: solid; pointer-events: none;
         }
@@ -59,7 +57,7 @@
 <body>
 
     <button id="start-btn">開啟相機並開始掃描</button>
-    <div id="scan-hint">📷 請將卡片對齊下方中央框框</div>
+    <div id="scan-hint">📷 請將卡片放進綠色框框內</div>
     
     <div id="video-container">
         <video id="video" autoplay playsinline></video>
@@ -113,47 +111,47 @@
                     canvas.height = 480;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                    // 1. 讀取完整相機畫面
-                    let fullSrc = cv.imread('canvas-match');
-                    
-                    // 2. 🟢 核心修正：精準計算綠色框框在 640x480 畫面中的實體像素座標
-                    // 寬度佔 70% (約 448 像素)，高度對齊 3:4 (約 336 像素)
-                    let rect = new cv.Rect(96, 72, 448, 336); 
-                    
-                    // 3. 🟢 只裁切出框框內的畫面進行比對
-                    let src = fullSrc.roi(rect);
-                    
+                    // 1. 讀取完整的相機畫面 (640x480)，完全不裁切，避免任何解析度或旋轉造成的座標衝突！
+                    let src = cv.imread('canvas-match');
                     let templ = cv.imread(templateImg);
                     
-                    // 4. 將範本圖片（card.png）自動縮放到與裁切框大小一致，確保 1:1 像素對齊
+                    // 2. 🟢 終極修正：建立一個跟相機一模一樣大 (640x480) 的畫布，把 card.png 縮小置中放進去
+                    // 這樣卡片在背景的大小，就會剛好等同於使用者把卡片放進綠色框框時的大小！
+                    let bigTempl = cv.Mat.zeros(480, 640, templ.type());
+                    
+                    // 計算縮小後的卡片尺寸（寬 240，高 320，完美符合 3:4）
                     let resizedTempl = new cv.Mat();
-                    let dsize = new cv.Size(448, 336);
+                    let dsize = new cv.Size(240, 320);
                     cv.resize(templ, resizedTempl, dsize, 0, 0, cv.INTER_AREA);
+                    
+                    // 把縮小後的卡片，精準貼到 640x480 背景的正中央 (X: 200, Y: 80)
+                    let roi = bigTempl.roi(new cv.Rect(200, 80, 240, 320));
+                    resizedTempl.copyTo(roi);
 
                     let dst = new cv.Mat();
                     let mask = new cv.Mat();
 
-                    // 5. 執行核心匹配
-                    cv.matchTemplate(src, resizedTempl, dst, cv.TM_CCOEFF_NORMED, mask);
+                    // 3. 進行全圖範本匹配
+                    cv.matchTemplate(src, bigTempl, dst, cv.TM_CCOEFF_NORMED, mask);
                     let result = cv.minMaxLoc(dst, mask);
                     
-                    console.log("當前裁切區吻合度：", result.maxVal);
-
-                    // 🎯 6. 安全防線：因為排除背景干擾，這裡將跳轉門檻鎖定在安全的 0.60
-                    if (result.maxVal > 0.60) {
+                    // 🎯 4. 安全平衡門檻值：設定在 0.42 (因為全圖包含背景雜訊，這個分數在對齊時最靈敏且絕對安全)
+                    if (result.maxVal > 0.42) {
                         isMatched = true;
+                        console.log("🎉 全圖對齊匹配成功！分數：", result.maxVal);
                         
-                        // 記憶體釋放
-                        fullSrc.delete(); src.delete(); templ.delete(); 
-                        resizedTempl.delete(); dst.delete(); mask.delete();
+                        // 記憶體解鎖
+                        src.delete(); templ.delete(); bigTempl.delete();
+                        resizedTempl.delete(); roi.delete(); dst.delete(); mask.delete();
                         
-                        // 🚀 執行直接跳轉
+                        // 🚀 直接執行網頁跳轉！
                         window.location.href = "https://bobo-studio-dodo.github.io/Bobo_studio.dodo_web/";
                         return;
                     }
 
-                    fullSrc.delete(); src.delete(); templ.delete(); 
-                    resizedTempl.delete(); dst.delete(); mask.delete();
+                    // 釋放記憶體避免手機瀏覽器閃退
+                    src.delete(); templ.delete(); bigTempl.delete();
+                    resizedTempl.delete(); roi.delete(); dst.delete(); mask.delete();
                 }
             } catch (e) {
                 // 運算中
